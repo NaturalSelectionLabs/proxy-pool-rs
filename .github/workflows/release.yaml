@@ -6,7 +6,7 @@ on:
   push:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   pull-requests: write
 
@@ -19,12 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-pc-windows-gnu
-            archive: zip
           - target: x86_64-unknown-linux-musl
             archive: tar.gz
-          - target: x86_64-apple-darwin
-            archive: zip
     steps:
       - uses: actions/checkout@v4
       - name: Compile and release
