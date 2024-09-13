@@ -5,9 +5,12 @@ use proxy_pool::{http::HttpServer, socks5::Socks5Server, Server};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
+    #[arg(short, long, env)]
+    debug: bool,
+
     #[arg(short = '6', long, env)]
     ipv6_cidr: String,
-    #[arg(short = '4', long, env)]
+    #[arg(short = '4', long, env, default_value = "")]
     ipv4_cidr: String,
 
     #[arg(long, env, default_value = "0.0.0.0")]
@@ -23,14 +26,20 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    let cli = Cli::parse();
+
     tracing_subscriber::fmt()
+        .with_max_level(if cli.debug {
+            tracing::Level::DEBUG
+        } else {
+            tracing::Level::INFO
+        })
         .event_format(
             tracing_subscriber::fmt::format()
                 .with_file(true)
                 .with_line_number(true),
         )
         .init();
-    let cli = Cli::parse();
 
     let http_addr = format!("{}:{}", cli.http_host, cli.http_port);
     let socks5_addr = format!("{}:{}", cli.socks5_host, cli.socks5_port);

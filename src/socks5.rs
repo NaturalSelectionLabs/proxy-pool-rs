@@ -72,6 +72,8 @@ async fn handle_connection(
 
     socket.read_exact(&mut buf).await.map_err(Error::from)?;
 
+    tracing::debug!("Received SOCKS5 request: {:?}", buf);
+
     if buf[0] != SOCKS_VERSION {
         return Err(Error::UnsupportedSocksVersion(buf[0]));
     }
@@ -141,12 +143,18 @@ async fn handle_connection(
     }
     .map_err(Error::from)?;
 
+    tracing::debug!("Socket bind {}", bind_addr);
+
     socket_type.bind(bind_addr).map_err(Error::from)?;
+
+    tracing::debug!("Connected to {}", addr);
 
     let mut remote = socket_type.connect(addr).await.map_err(Error::from)?;
 
     let reply = SocksReply::new(ResponseCode::Success);
     reply.send(socket).await.map_err(Error::from)?;
+
+    tracing::debug!("Start tunneling");
 
     tokio::io::copy_bidirectional(socket, &mut remote)
         .await
