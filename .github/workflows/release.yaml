@@ -8,6 +8,9 @@ permissions:
   contents: write
   packages: write
 
+env:
+  BINARY_NAME: proxy-pool
+
 jobs:
   build:
     strategy:
@@ -39,14 +42,12 @@ jobs:
       - name: build archive
         shell: bash
         run: |
-          binary_name = proxy-pool
-
-          dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
+          dirname="${{ env.BINARY_NAME }}-${{ env.VERSION }}-${{ matrix.target }}"
           mkdir "$dirname"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            mv "target/${{ matrix.target }}/release/$binary_name.exe" "$dirname"
+            mv "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" "$dirname"
           else
-            mv "target/${{ matrix.target }}/release/$binary_name" "$dirname"
+            mv "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}" "$dirname"
           fi
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
