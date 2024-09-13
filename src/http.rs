@@ -1,30 +1,33 @@
-use std::net::ToSocketAddrs;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 
-use crate::metrics;
 use crate::Server;
+use crate::{get_rand_ipv4_socket_addr, get_rand_ipv6_socket_addr};
 use async_trait::async_trait;
 use axum::{
     body::Body,
     extract::Request,
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
-    Router,
 };
-
+use cidr::Ipv4Cidr;
 use cidr::Ipv6Cidr;
 use hyper::{body::Incoming, server::conn::http1};
 use hyper_util::rt::TokioIo;
+use rand::seq::SliceRandom;
 
+use hyper_util::{client::legacy::connect::HttpConnector, rt::TokioExecutor};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::{TcpListener, TcpSocket},
 };
 use tower::Service;
-use tower::ServiceExt;
+
+type Client = hyper_util::client::legacy::Client<HttpConnector, Body>;
 
 #[derive(Clone)]
 pub struct HttpServer {
     addr: std::net::SocketAddr,
+    ipv4_subnets: Vec<Ipv4Cidr>,
     ipv6_subnets: Vec<Ipv6Cidr>,
 }
 
@@ -35,16 +38,15 @@ impl Server for HttpServer {
 
         tracing::info!("Start HTTP server on {}", self.addr);
 
-        let router = Router::new().merge(metrics::routes());
-
         let tower_service = tower::service_fn(move |req: Request<_>| {
-            let router = router.clone();
             let req = req.map(Body::new);
             async move {
+                tracing::debug!("Request method: {:?}", req.method());
                 if req.method() == Method::CONNECT {
                     proxy(req, self.ipv6_subnets.clone()).await
                 } else {
-                    router.oneshot(req).await.map_err(|err| match err {})
+                    request(req, &self.ipv4_subnets.clone(), &self.ipv6_subnets.clone()).await
+                    // router.oneshot(req).await.map_err(|err| match err {})
                 }
             }
         });
@@ -73,8 +75,14 @@ impl HttpServer {
     pub fn new(addr: std::net::SocketAddr) -> Self {
         Self {
             addr,
+            ipv4_subnets: vec![],
             ipv6_subnets: vec![],
         }
+    }
+
+    pub fn with_ipv4_subnets(mut self, ipv4_subnets: Vec<Ipv4Cidr>) -> Self {
+        self.ipv4_subnets = ipv4_subnets;
+        self
     }
 
     pub fn with_ipv6_subnets(mut self, ipv6_subnets: Vec<Ipv6Cidr>) -> Self {
@@ -108,6 +116,90 @@ async fn proxy(req: Request, ipv6_subnets: Vec<Ipv6Cidr>) -> Result<Response, hy
         )
             .into_response())
     }
+}
+
+async fn request(
+    req: Request,
+    ipv4_subnets: &[Ipv4Cidr],
+    ipv6_subnets: &[Ipv6Cidr],
+) -> Result<Response, hyper::Error> {
+    tracing::trace!(?req);
+
+    let bind_addr = if let Some(host) = req.uri().host() {
+        let addr_str = format!("{}:{}", host, req.uri().port_u16().unwrap_or(80));
+
+        match tokio::net::lookup_host(addr_str).await {
+            Ok(mut addrs) => {
+                if let Some(addr) = addrs.next() {
+                    match addr {
+                        SocketAddr::V4(_) => {
+                            // Host resolves to an IPv4 address, select from IPv4 subnets
+                            if let Some(ipv4_cidr) = ipv4_subnets.choose(&mut rand::thread_rng()) {
+                                get_rand_ipv4_socket_addr(std::slice::from_ref(ipv4_cidr)).ip()
+                            } else {
+                                IpAddr::V4(Ipv4Addr::LOCALHOST) // Fallback to IPv4 loopback address (127.0.0.1)
+                            }
+                        }
+                        SocketAddr::V6(_) => {
+                            // Host resolves to an IPv6 address, select from IPv6 subnets
+                            if let Some(ipv6_cidr) = ipv6_subnets.choose(&mut rand::thread_rng()) {
+                                get_rand_ipv6_socket_addr(std::slice::from_ref(ipv6_cidr)).ip()
+                            } else {
+                                IpAddr::V6(Ipv6Addr::LOCALHOST) // Fallback to IPv6 loopback address (::1)
+                            }
+                        }
+                    }
+                } else {
+                    // No valid address found, fallback to loopback
+                    if ipv6_subnets.is_empty() {
+                        IpAddr::V4(Ipv4Addr::LOCALHOST) // Default to IPv4 loopback
+                    } else {
+                        IpAddr::V6(Ipv6Addr::LOCALHOST) // Default to IPv6 loopback
+                    }
+                }
+            }
+            Err(_) => {
+                // Error during lookup, fallback to loopback
+                if ipv6_subnets.is_empty() {
+                    IpAddr::V4(Ipv4Addr::LOCALHOST) // Default to IPv4 loopback
+                } else {
+                    IpAddr::V6(Ipv6Addr::LOCALHOST) // Default to IPv6 loopback
+                }
+            }
+        }
+    } else {
+        // Fallback if there is no host in the URI
+        if ipv6_subnets.is_empty() {
+            IpAddr::V4(Ipv4Addr::LOCALHOST) // Default to IPv4 loopback
+        } else {
+            IpAddr::V6(Ipv6Addr::LOCALHOST) // Default to IPv6 loopback
+        }
+    };
+
+    let mut http = HttpConnector::new();
+    http.set_local_address(Some(bind_addr));
+    tracing::info!("{} via {}", req.uri().host().unwrap_or_default(), bind_addr);
+
+    // Apply timeout to the HTTP request process
+    let req = async {
+        // let client = Client::builder()
+        //     .http1_title_case_headers(true)
+        //     .http1_preserve_header_case(true)
+        //     .build(http);
+
+        let client: Client =
+            hyper_util::client::legacy::Client::<(), ()>::builder(TokioExecutor::new())
+                .http1_title_case_headers(true)
+                .http1_preserve_header_case(true)
+                .build(http);
+
+        client.request(req).await
+    };
+
+    Ok(req
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)
+        .into_response())
 }
 
 async fn tunnel<T>(
