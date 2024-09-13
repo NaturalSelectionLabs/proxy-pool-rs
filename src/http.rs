@@ -1,5 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 
+use crate::metrics::{HTTP_ERROR_COUNTER, HTTP_REQUEST_COUNTER};
 use crate::Server;
 use crate::{get_rand_ipv4_socket_addr, get_rand_ipv6_socket_addr};
 use async_trait::async_trait;
@@ -42,6 +43,9 @@ impl Server for HttpServer {
             let req = req.map(Body::new);
             async move {
                 tracing::debug!("Request method: {:?}", req.method());
+                HTTP_REQUEST_COUNTER
+                    .with_label_values(&[req.method().as_str()])
+                    .inc();
                 if req.method() == Method::CONNECT {
                     proxy(req, self.ipv6_subnets.clone()).await
                 } else {
@@ -65,6 +69,7 @@ impl Server for HttpServer {
                 .with_upgrades()
                 .await
             {
+                HTTP_ERROR_COUNTER.inc();
                 tracing::warn!("Failed to serve connection: {:?}", err);
             }
         }

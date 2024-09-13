@@ -9,7 +9,11 @@ use tokio::{
     net::{TcpListener, TcpSocket, TcpStream},
 };
 
-use crate::{error::Error, Server};
+use crate::{
+    error::Error,
+    metrics::{SOCKS5_ERROR_COUNTER, SOCKS5_REQUEST_COUNTER},
+    Server,
+};
 
 const SOCKS_VERSION: u8 = 0x05;
 const RESERVED: u8 = 0x00;
@@ -36,6 +40,7 @@ impl Server for Socks5Server {
 
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(&mut socket, &ipv4_subnets, &ipv6_subnets).await {
+                    SOCKS5_ERROR_COUNTER.inc();
                     tracing::error!("SOCKS5 server error: {}", e);
                 }
             });
@@ -68,6 +73,7 @@ async fn handle_connection(
     ipv4_subnets: &[Ipv4Cidr],
     ipv6_subnets: &[Ipv6Cidr],
 ) -> Result<(), Error> {
+    SOCKS5_REQUEST_COUNTER.inc();
     let mut buf = [0; 2];
 
     socket.read_exact(&mut buf).await.map_err(Error::from)?;
