@@ -20,7 +20,6 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            archive: tar.gz
     steps:
       - uses: actions/checkout@v4
       - name: Compile and release
@@ -29,7 +28,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
           MINIFY: "yes"
   release_without_not_required:
     name: release ${{ matrix.target }}
