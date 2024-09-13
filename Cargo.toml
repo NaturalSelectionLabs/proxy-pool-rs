@@ -1,0 +1,27 @@
+[package]
+name = "proxy-pool"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ares Wang <areswang@rss3.io>"]
+description = "A simple proxy pool written in Rust"
+readme = "README.md"
+license = "Apache-2.0"
+repository = "https://github.com/NaturalSelectionLabs/proxy-pool-rs"
+keywords = ["proxy", "pool", "rust", "ipv6"]
+
+[dependencies]
+cidr = "0.2"
+hyper = { version = "1", features = ["full"] }
+hyper-util = "0.1.1"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["make"] }
+rand = "0.8"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+axum = "0.7.5"
+metrics = { version = "0.22", default-features = false }
+metrics-exporter-prometheus = { version = "0.13", default-features = false }
+thiserror = "1.0.63"
+clap = { version = "4.5.17", features = ["derive", "env"] }
+async-trait = "0.1.82"
+futures = "0.3.30"
