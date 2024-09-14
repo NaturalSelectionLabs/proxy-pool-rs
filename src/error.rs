@@ -10,6 +10,9 @@ pub enum Error {
     #[error("From UTF8 error {0}")]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
 
+    #[error("From hyper error {0}")]
+    FromHyperError(#[from] hyper::Error),
+
     #[error("Unsupported SOCKS version, {0}")]
     UnsupportedSocksVersion(u8),
 

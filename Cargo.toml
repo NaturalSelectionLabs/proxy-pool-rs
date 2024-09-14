@@ -11,7 +11,12 @@ keywords = ["proxy", "pool", "rust", "ipv6"]
 
 [dependencies]
 cidr = "0.2"
-hyper = { version = "1", features = ["full"] }
+hyper = { version = "0.14", features = [
+    "client",
+    "server",
+    "http1",
+    "runtime",
+] }
 hyper-util = { version = "0.1.8", features = ["client-legacy"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["make"] }
